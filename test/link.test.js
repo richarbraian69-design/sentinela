@@ -152,3 +152,54 @@ test('sem ADMIN_TOKEN o painel fica desligado, e o link segue funcionando', asyn
     await semSenha.fecha();
   }
 });
+
+test('painel: cliques por dia e por link', async () => {
+  const { serie, dias } = await (await servidor.admin('/serie?dias=14&clinica=dra-ana')).json();
+  assert.equal(dias, 14);
+  assert.ok(serie.every((linha) => /^\d{4}-\d{2}-\d{2}$/.test(linha.dia)));
+  const total = serie.reduce((soma, linha) => soma + linha.cliques, 0);
+
+  const { links } = await (await servidor.admin('/clinicas/dra-ana/links')).json();
+  assert.deepEqual(links.map((link) => link.origem).sort(), ['bio', 'destaque', 'stories']);
+  assert.equal(links.reduce((soma, link) => soma + link.cliques_total, 0), total);
+  assert.ok(links.every((link) => link.conversas === 0));
+
+  assert.equal((await servidor.admin('/clinicas/nao-existe/links')).status, 404);
+});
+
+test('painel: leads com a linha do tempo em ordem', async () => {
+  const vazio = await (await servidor.admin('/clinicas/dra-ana/leads')).json();
+  assert.deepEqual(vazio.leads, []);
+
+  const { rows: [clinica] } = await banco.consulta("select id from clinicas where slug = 'dra-ana'");
+  const { rows: [lead] } = await banco.consulta(
+    "insert into leads (clinica_id, nome, telefone, segue_perfil) values ($1, 'Maria', '5551988880000', true) returning id", [clinica.id]);
+  const { rows: [conteudo] } = await banco.consulta(
+    "insert into conteudos (clinica_id, origem, id_externo, titulo, tipo) values ($1, 'anuncio', '123', 'Anúncio: avaliação', 'oferta') returning id", [clinica.id]);
+  await banco.consulta(
+    `insert into toques (clinica_id, lead_id, tipo, canal, conteudo_id, detalhes, ocorrido_em) values
+       ($1, $2, 'primeira_mensagem', 'whatsapp', null, '{"texto":"Oi"}', now() - interval '1 day'),
+       ($1, $2, 'clique_anuncio_whatsapp', 'whatsapp', $3, '{}', now() - interval '2 days')`, [clinica.id, lead.id, conteudo.id]);
+  await banco.consulta("insert into etapas (lead_id, etapa, valor) values ($1, 'agendou', null), ($1, 'fechou', 2800)", [lead.id]);
+
+  const { leads } = await (await servidor.admin('/clinicas/dra-ana/leads')).json();
+  assert.equal(leads.length, 1);
+  assert.equal(leads[0].nome, 'Maria');
+  assert.deepEqual(leads[0].toques.map((toque) => toque.tipo), ['clique_anuncio_whatsapp', 'primeira_mensagem']);
+  assert.equal(leads[0].toques[0].titulo, 'Anúncio: avaliação');
+  assert.equal(leads[0].toques[0].conteudo_tipo, 'oferta');
+  assert.equal(leads[0].toques[1].detalhes.texto, 'Oi');
+  assert.equal(leads[0].etapas.length, 2);
+
+  const { clinicas } = await (await servidor.admin('/clinicas')).json();
+  const ana = clinicas.find((item) => item.slug === 'dra-ana');
+  assert.equal(ana.leads, 1);
+  assert.equal(ana.agendaram, 1);
+  assert.equal(ana.fecharam, 1);
+});
+
+test('painel: página e arquivos são servidos', async () => {
+  assert.equal((await servidor.chamar('/admin')).status, 200);
+  assert.match((await servidor.chamar('/admin/admin.css')).headers.get('content-type'), /css/);
+  assert.match((await servidor.chamar('/admin/admin.js')).headers.get('content-type'), /javascript/);
+});

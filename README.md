@@ -51,9 +51,14 @@ Cuidados embutidos:
 
 Para colocar o código em outro ponto da mensagem, use `{codigo}` no texto da clínica.
 
-### Painel provisório
+### Painel
 
-Em `/admin`: cadastro de clínicas, links prontos para copiar e lista de cliques. A tela definitiva vem na fase 7.
+Em `/admin`, na mesma identidade do Ora et Labora, do Celeiro e do Forja:
+
+- **Visão geral:** cliques por dia, clínicas sob vigia e os números da semana.
+- **Jornada do lead:** a linha do tempo de cada pessoa (o que fez e o que disse ter visto) e o que as jornadas de quem agendou têm em comum. Enquanto a clínica não tem leads, mostra fichas de exemplo, marcadas como exemplo.
+- **Links rastreáveis:** um link por ponto de contato, com cliques e conversas.
+- **Cliques** e **Ajustes** da clínica.
 
 ## Configuração
 

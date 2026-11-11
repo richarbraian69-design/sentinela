@@ -34,6 +34,7 @@ export function criarApp({ banco, senhaAdmin }) {
     res.sendFile(path.join(PUBLICO, 'admin.html'));
   });
   app.use('/admin/api', rotasDoAdmin({ banco, clinicas, senha: senhaAdmin }));
+  app.use('/admin', express.static(PUBLICO, { index: false }));
 
   // Por último: tudo o que sobrar é tratado como link rastreado de clínica.
   app.use(rotasDoLink({ banco, clinicas }));
