@@ -1,0 +1,20 @@
+{
+  "name": "sentinela",
+  "version": "0.1.0",
+  "description": "Sentinela: jornada do lead das clínicas, do primeiro toque até a venda",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "migrar": "node src/migrar.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16"
+  }
+}

@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Sentinela</title>
+<style>
+  :root {
+    --fundo: #ffffff; --texto: #111111; --suave: #6b6b6b; --linha: #e4e4e4;
+    --bloco: #f6f6f6; --acao: #111111; --acao-texto: #ffffff; --erro: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fundo: #0e0e0e; --texto: #f2f2f2; --suave: #9a9a9a; --linha: #2a2a2a;
+      --bloco: #181818; --acao: #f2f2f2; --acao-texto: #0e0e0e; --erro: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fundo); color: var(--texto);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 32px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; margin: 40px 0 12px; }
+  p.nota { color: var(--suave); margin: 4px 0 16px; }
+  label { display: block; font-size: 13px; color: var(--suave); margin-bottom: 4px; }
+  input, select {
+    width: 100%; padding: 9px 10px; font: inherit; color: var(--texto);
+    background: var(--fundo); border: 1px solid var(--linha); border-radius: 6px;
+  }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--texto); outline-offset: 1px; }
+  button {
+    font: inherit; padding: 9px 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--acao); background: var(--acao); color: var(--acao-texto);
+  }
+  button.leve { background: transparent; color: var(--texto); border-color: var(--linha); padding: 4px 10px; font-size: 13px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .largo { grid-column: 1 / -1; }
+  .cartao { border: 1px solid var(--linha); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .cartao h3 { margin: 0; font-size: 15px; }
+  .cartao .meta { color: var(--suave); font-size: 13px; margin: 2px 0 12px; }
+  .link { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--linha); }
+  .link code { flex: 1; overflow-wrap: anywhere; font-size: 13px; }
+  .rolagem { overflow-x: auto; border: 1px solid var(--linha); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+  th { color: var(--suave); font-weight: 500; background: var(--bloco); }
+  tr:last-child td { border-bottom: 0; }
+  .erro { color: var(--erro); min-height: 22px; margin: 8px 0 0; font-size: 13px; }
+  .vazio { color: var(--suave); padding: 16px; }
+  .linha { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  .linha > div { flex: 1; min-width: 180px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Sentinela</h1>
+    <button class="leve" id="sair" hidden>Sair</button>
+  </header>
+
+  <section id="entrada">
+    <form id="form-entrada" class="linha">
+      <div>
+        <label for="senha">Senha do painel</label>
+        <input id="senha" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit">Entrar</button>
+    </form>
+    <p class="erro" id="erro-entrada" role="alert"></p>
+  </section>
+
+  <section id="painel" hidden>
+    <h2>Clínicas e links</h2>
+    <p class="nota">Cada link registra o clique e leva a pessoa ao WhatsApp da clínica. Use um link por ponto de contato.</p>
+    <div id="clinicas"></div>
+
+    <h2>Nova clínica</h2>
+    <form id="form-clinica">
+      <div class="grade">
+        <div>
+          <label for="nome">Nome</label>
+          <input id="nome" required maxlength="120" placeholder="Dra. Ana Souza">
+        </div>
+        <div>
+          <label for="slug">Endereço no link</label>
+          <input id="slug" required pattern="[a-z0-9][a-z0-9\-]{1,48}" placeholder="dra-ana">
+        </div>
+        <div>
+          <label for="whatsapp">WhatsApp (com 55 e DDD)</label>
+          <input id="whatsapp" required inputmode="tel" placeholder="55 51 99999-0000">
+        </div>
+        <div class="largo">
+          <label for="mensagem">Mensagem que já vem escrita (opcional)</label>
+          <input id="mensagem" maxlength="500" placeholder="Olá! Vim pelo Instagram e quero agendar uma avaliação.">
+        </div>
+      </div>
+      <p class="erro" id="erro-clinica" role="alert"></p>
+      <button type="submit">Cadastrar clínica</button>
+    </form>
+
+    <h2>Cliques recentes</h2>
+    <div class="linha" style="margin-bottom:12px">
+      <div>
+        <label for="filtro">Clínica</label>
+        <select id="filtro"><option value="">Todas</option></select>
+      </div>
+      <button class="leve" id="atualizar" type="button">Atualizar</button>
+    </div>
+    <div class="rolagem">
+      <table>
+        <thead><tr><th>Quando</th><th>Clínica</th><th>Origem</th><th>Código</th><th>Visitante</th><th>Mensagem chegou?</th></tr></thead>
+        <tbody id="cliques"></tbody>
+      </table>
+      <div class="vazio" id="sem-cliques" hidden>Nenhum clique registrado ainda.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var ORIGENS = ['bio', 'stories', 'destaque'];
+  var senha = '';
+  var el = function (id) { return document.getElementById(id); };
+
+  function guardar(valor) { try { valor ? sessionStorage.setItem('snt_senha', valor) : sessionStorage.removeItem('snt_senha'); } catch (e) {} }
+  function recuperar() { try { return sessionStorage.getItem('snt_senha') || ''; } catch (e) { return ''; } }
+
+  function api(caminho, opcoes) {
+    opcoes = opcoes || {};
+    return fetch('/admin/api' + caminho, {
+      method: opcoes.method || 'GET',
+      headers: { 'Authorization': 'Bearer ' + senha, 'Content-Type': 'application/json' },
+      body: opcoes.body ? JSON.stringify(opcoes.body) : undefined
+    }).then(function (resposta) {
+      return resposta.json().catch(function () { return {}; }).then(function (dados) {
+        if (!resposta.ok) { var erro = new Error(dados.erro || 'Erro ' + resposta.status); erro.status = resposta.status; throw erro; }
+        return dados;
+      });
+    });
+  }
+
+  function no(tag, texto, classe) {
+    var item = document.createElement(tag);
+    if (texto !== undefined && texto !== null) item.textContent = texto;
+    if (classe) item.className = classe;
+    return item;
+  }
+
+  function mostrarClinicas(lista) {
+    var caixa = el('clinicas');
+    var filtro = el('filtro');
+    var escolhida = filtro.value;
+    caixa.replaceChildren();
+    filtro.replaceChildren(new Option('Todas', ''));
+
+    if (lista.length === 0) caixa.appendChild(no('p', 'Nenhuma clínica cadastrada ainda.', 'nota'));
+
+    lista.forEach(function (clinica) {
+      filtro.appendChild(new Option(clinica.nome, clinica.slug));
+
+      var cartao = no('div', null, 'cartao');
+      cartao.appendChild(no('h3', clinica.nome + (clinica.ativa ? '' : ' (desativada)')));
+      cartao.appendChild(no('div',
+        'WhatsApp ' + clinica.whatsapp + ' · ' + clinica.cliques_7_dias + ' cliques em 7 dias · ' + clinica.cliques_total + ' no total', 'meta'));
+
+      ORIGENS.forEach(function (origem) {
+        var endereco = location.origin + '/' + clinica.slug + '/' + origem;
+        var linha = no('div', null, 'link');
+        linha.appendChild(no('code', endereco));
+        var copiar = no('button', 'Copiar', 'leve');
+        copiar.type = 'button';
+        copiar.addEventListener('click', function () {
+          navigator.clipboard.writeText(endereco).then(function () {
+            copiar.textContent = 'Copiado';
+            setTimeout(function () { copiar.textContent = 'Copiar'; }, 1500);
+          });
+        });
+        linha.appendChild(copiar);
+        cartao.appendChild(linha);
+      });
+      caixa.appendChild(cartao);
+    });
+    filtro.value = escolhida;
+  }
+
+  function mostrarCliques(lista) {
+    var corpo = el('cliques');
+    corpo.replaceChildren();
+    el('sem-cliques').hidden = lista.length > 0;
+    lista.forEach(function (clique) {
+      var linha = document.createElement('tr');
+      [
+        new Date(clique.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+        clique.clinica,
+        clique.origem,
+        clique.codigo || '',
+        clique.visitante_id ? clique.visitante_id.slice(0, 8) : '',
+        clique.vinculado ? 'Sim' : 'Ainda não'
+      ].forEach(function (valor) { linha.appendChild(no('td', valor)); });
+      corpo.appendChild(linha);
+    });
+  }
+
+  function carregarCliques() {
+    var slug = el('filtro').value;
+    return api('/cliques?limite=100' + (slug ? '&clinica=' + encodeURIComponent(slug) : '')).then(function (dados) { mostrarCliques(dados.cliques); });
+  }
+
+  function carregarTudo() {
+    return api('/clinicas').then(function (dados) { mostrarClinicas(dados.clinicas); return carregarCliques(); });
+  }
+
+  function entrar(valor) {
+    senha = valor;
+    el('erro-entrada').textContent = '';
+    return carregarTudo().then(function () {
+      guardar(senha);
+      el('entrada').hidden = true;
+      el('painel').hidden = false;
+      el('sair').hidden = false;
+    }).catch(function (erro) {
+      senha = '';
+      guardar('');
+      el('erro-entrada').textContent = erro.message;
+    });
+  }
+
+  el('form-entrada').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    entrar(el('senha').value);
+  });
+
+  el('sair').addEventListener('click', function () {
+    senha = '';
+    guardar('');
+    el('senha').value = '';
+    el('painel').hidden = true;
+    el('sair').hidden = true;
+    el('entrada').hidden = false;
+  });
+
+  el('form-clinica').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    el('erro-clinica').textContent = '';
+    api('/clinicas', { method: 'POST', body: {
+      nome: el('nome').value, slug: el('slug').value, whatsapp: el('whatsapp').value, mensagem: el('mensagem').value
+    } }).then(function () {
+      evento.target.reset();
+      return carregarTudo();
+    }).catch(function (erro) { el('erro-clinica').textContent = erro.message; });
+  });
+
+  el('filtro').addEventListener('change', carregarCliques);
+  el('atualizar').addEventListener('click', carregarTudo);
+
+  var anterior = recuperar();
+  if (anterior) entrar(anterior);
+})();
+</script>
+</body>
+</html>
