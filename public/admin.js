@@ -116,7 +116,7 @@ function liturgia(d) {
 }
 
 /* ---------- Estado ---------- */
-var S = { senha: '', clinicas: [], slug: lembrar('snt_clinica'), vista: 'geral', dados: {}, vigilia: Math.floor(Math.random() * VIGILIAS.length), leadAberto: null, origensExtras: {} };
+var S = { senha: '', clinicas: [], slug: lembrar('snt_clinica'), vista: 'geral', dados: {}, busca: '', filtro: 'todas', vigilia: Math.floor(Math.random() * VIGILIAS.length), leadAberto: null, origensExtras: {} };
 var raiz = document.getElementById('raiz'), camada = document.getElementById('camada');
 
 function aplicarTema() {
@@ -371,71 +371,169 @@ function exemplos() {
       toques: [
         t('clique_link', 'link', 1, 16, 9, null, null, { origem: 'bio' }),
         t('primeira_mensagem', 'whatsapp', 1, 16, 10, null, null, { texto: 'Olá! Vim pelo Instagram e quero agendar uma avaliação.' })],
+      etapas: [] },
+    { id: 'ex5', nome: 'Renata A.', telefone: '(51) 9••••-0917', ig_username: 'renata.alves', segue_perfil: true,
+      toques: [
+        t('comentario', 'instagram', 14, 21, 30, 'Post: depoimento de paciente', 'depoimento', { texto: 'Ficou muito natural.' }),
+        t('resposta_story', 'instagram', 8, 13, 5, 'Story: antes e depois de olheiras', 'antes_depois', { texto: 'Qual o valor da avaliação?' }),
+        t('clique_link', 'link', 5, 20, 41, null, null, { origem: 'stories' }),
+        t('primeira_mensagem', 'whatsapp', 5, 20, 42, null, null, { texto: 'Olá! Vim pelo Instagram e quero agendar uma avaliação.' }),
+        t('declarado', 'whatsapp', 5, 21, 3, null, null, { texto: 'Vi os depoimentos e os stories de antes e depois.' })],
+      etapas: [{ etapa: 'agendou', quando: em(4, 11, 20) }] },
+    { id: 'ex6', nome: 'Bruna T.', telefone: '(51) 9••••-3392', ig_username: null, segue_perfil: false,
+      toques: [
+        t('clique_anuncio_whatsapp', 'whatsapp', 3, 22, 48, 'Anúncio: avaliação de harmonização', 'oferta'),
+        t('primeira_mensagem', 'whatsapp', 3, 22, 49, null, null, { texto: 'Quanto custa?' })],
       etapas: [] }
   ];
 }
 function resumoDoLead(l) {
   var feitos = l.toques.filter(function (t) { return t.tipo !== 'declarado'; });
+  var ditos = l.toques.filter(function (t) { return t.tipo === 'declarado' && t.detalhes && t.detalhes.texto; });
   var agenda = l.etapas.filter(function (e) { return e.etapa === 'agendou'; })[0];
   var fechou = l.etapas.filter(function (e) { return e.etapa === 'fechou'; })[0];
   var antes = agenda ? feitos.filter(function (t) { return new Date(t.quando) <= new Date(agenda.quando); }) : feitos;
   var dias = agenda && feitos.length ? Math.max(0, Math.round((new Date(agenda.quando) - new Date(feitos[0].quando)) / 864e5)) : null;
-  return { feitos: feitos, agenda: agenda, fechou: fechou, antes: antes.length, dias: dias };
+  return { feitos: feitos, ditos: ditos, agenda: agenda, fechou: fechou, antes: antes.length, dias: dias, situacao: fechou ? 'fechou' : agenda ? 'agendou' : 'conversa' };
+}
+var SITUACOES = { fechou: ['Fechou', 'pill ok'], agendou: ['Agendou', 'pill ok'], conversa: ['Em conversa', 'pill'] };
+function pilula(r) { return h('span', { class: SITUACOES[r.situacao][1], text: SITUACOES[r.situacao][0] }); }
+function mediana(valores) {
+  var v = valores.slice().sort(function (a, b) { return a - b; }), m = Math.floor(v.length / 2);
+  return v.length ? (v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2) : null;
+}
+function tituloDoToque(t) {
+  var d = t.detalhes || {};
+  return t.tipo === 'clique_link' && d.origem ? 'Clicou no link (' + d.origem + ')' : (TOQUES[t.tipo] || [t.tipo])[0];
+}
+function eventosDoLead(l, r) {
+  return r.feitos.map(function (t) { return { quando: t.quando, toque: t }; })
+    .concat(l.etapas.map(function (e) { return { quando: e.quando, etapa: e }; }))
+    .sort(function (a, b) { return new Date(a.quando) - new Date(b.quando); });
+}
+// A jornada inteira em uma fileira de ícones, para comparar várias leads de relance.
+function trilha(l, r) {
+  var itens = eventosDoLead(l, r).map(function (it) {
+    return it.etapa ? { quando: it.quando, etapa: true, rot: ETAPAS[it.etapa.etapa] || it.etapa.etapa }
+      : { quando: it.quando, ic: (TOQUES[it.toque.tipo] || [0, 'mensagem'])[1], rot: tituloDoToque(it.toque) + (it.toque.titulo ? ': ' + it.toque.titulo : '') };
+  });
+  var max = 10, corte = itens.length > max ? itens.slice(itens.length - max) : itens;
+  return h('span', { class: 'trilha', role: 'img', 'aria-label': itens.map(function (i) { return i.rot; }).join(', depois ') },
+    itens.length > max ? h('span', { class: 'trilha-mais', text: '+' + (itens.length - max) }) : null,
+    corte.map(function (i) { return h('span', { class: 'trilha-i' + (i.etapa ? ' etapa' : ''), title: diaMes(i.quando) + ' · ' + i.rot, svg: icone(i.etapa ? 'marco' : i.ic) }); }));
+}
+// Em quantas jornadas cada coisa aparece: quem agendou ao lado de quem não agendou.
+function comparacao(titulo, A, B, chave, rotulo) {
+  function conta(grupo) {
+    var c = {};
+    grupo.forEach(function (l) { var v = {}; l.toques.forEach(function (t) { var k = chave(t); if (k) v[k] = 1; }); Object.keys(v).forEach(function (k) { c[k] = (c[k] || 0) + 1; }); });
+    return c;
+  }
+  var ca = conta(A), cb = conta(B), parte = function (c, k, g) { return g.length ? (c[k] || 0) / g.length : 0; };
+  var chaves = Object.keys(ca).concat(Object.keys(cb)).filter(function (k, i, a) { return a.indexOf(k) === i; })
+    .sort(function (x, y) { return parte(ca, y, A) - parte(ca, x, A) || parte(cb, y, B) - parte(cb, x, B); });
+  var linha = function (cls, n, grupo) {
+    var pct = grupo.length ? Math.round(n / grupo.length * 100) : 0;
+    return h('div', { class: 'comp-l' }, h('div', { class: 'barra ' + cls }, h('i', { style: 'width:' + pct + '%' })), h('small', { text: grupo.length ? n + ' de ' + grupo.length + ' · ' + pct + '%' : 'sem leads' }));
+  };
+  return h('div', { class: 'painel pad', style: 'display:grid;gap:14px;align-content:start' },
+    h('p', { class: 'rot', text: titulo }),
+    chaves.length === 0 ? h('p', { class: 'nota', text: 'Sem dados ainda.' })
+      : h('div', { class: 'comps' }, chaves.map(function (k) { return h('div', { class: 'comp' }, h('span', { class: 'comp-rot', text: rotulo(k) }), linha('a', ca[k] || 0, A), linha('b', cb[k] || 0, B)); })));
 }
 function vistaJornada() {
   var c = clinicaAtual();
   var reais_ = S.dados.leads || [], exemplo = reais_.length === 0, leads = exemplo ? exemplos() : reais_;
-  var resumos = leads.map(resumoDoLead), comAgenda = resumos.filter(function (r) { return r.agenda; });
-  var media = function (lista, f) { return lista.length ? lista.reduce(function (t, r) { return t + f(r); }, 0) / lista.length : null; };
-  var seguem = leads.filter(function (l, i) { return resumos[i].agenda && l.segue_perfil; }).length;
+  var resumos = leads.map(resumoDoLead), A = [], B = [], rA = [];
+  leads.forEach(function (l, i) { if (resumos[i].agenda) { A.push(l); rA.push(resumos[i]); } else B.push(l); });
+  var seguem = function (g) { return g.filter(function (l) { return l.segue_perfil; }).length; };
+  var conta = { todas: leads.length, fechou: 0, agendou: 0, conversa: 0 };
+  resumos.forEach(function (r) { conta[r.situacao] += 1; });
   var aberto = leads.filter(function (l) { return String(l.id) === String(S.leadAberto); })[0] || leads[0];
 
-  var freq = function (chave, rotulos) {
-    var cont = {};
-    leads.forEach(function (l, i) {
-      if (!resumos[i].agenda) return;
-      var vistos = {};
-      l.toques.forEach(function (t) { var k = chave(t); if (k) vistos[k] = 1; });
-      Object.keys(vistos).forEach(function (k) { cont[k] = (cont[k] || 0) + 1; });
-    });
-    var linhas = Object.keys(cont).sort(function (a, b) { return cont[b] - cont[a]; });
-    if (!linhas.length) return h('p', { class: 'nota', text: 'Sem dados ainda.' });
-    return h('div', { class: 'barras' }, linhas.map(function (k) {
-      return h('div', { class: 'barra-l' }, h('span', { text: rotulos(k) }), h('small', { text: cont[k] + ' de ' + comAgenda.length }), h('div', { class: 'barra' }, h('i', { style: 'width:' + Math.round(cont[k] / comAgenda.length * 100) + '%' })));
+  var lista = h('div', { class: 'painel leads' }), chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Situação' });
+  var ficha = h('div', { class: 'painel', id: 'ficha' }, fichaDoLead(aberto, resumoDoLead(aberto)));
+  function abrir(l, botao) {
+    S.leadAberto = l.id;
+    ficha.replaceChildren(fichaDoLead(l, resumoDoLead(l)));
+    Array.prototype.forEach.call(lista.children, function (b) { b.removeAttribute('aria-current'); });
+    botao.setAttribute('aria-current', 'true');
+    if (window.matchMedia('(max-width:980px)').matches) ficha.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function preencher() {
+    var busca = S.busca.trim().toLowerCase().replace(/^@/, '');
+    chips.replaceChildren.apply(chips, [['todas', 'Todas'], ['fechou', 'Fechou'], ['agendou', 'Agendou'], ['conversa', 'Em conversa']].map(function (f) {
+      return h('button', { class: 'chip', type: 'button', 'aria-pressed': S.filtro === f[0] ? 'true' : 'false', onclick: function () { S.filtro = f[0]; preencher(); } }, f[1], h('small', { text: conta[f[0]] }));
     }));
-  };
+    var linhas = [];
+    leads.forEach(function (l, i) {
+      var r = resumos[i];
+      if (S.filtro !== 'todas' && r.situacao !== S.filtro) return;
+      if (busca && [l.nome, l.telefone, l.ig_username].join(' ').toLowerCase().replace(/[^a-z0-9à-ú@. ]/g, '').indexOf(busca) < 0
+        && String(l.telefone || '').replace(/\D/g, '').indexOf(busca.replace(/\D/g, '') || '#') < 0) return;
+      var botao = h('button', { class: 'lead', type: 'button', 'aria-current': l === aberto || String(l.id) === String(S.leadAberto) ? 'true' : null, onclick: function () { abrir(l, botao); } },
+        h('span', { class: 'lead-topo' }, h('b', { text: l.nome || l.telefone || '@' + l.ig_username }), pilula(r)),
+        trilha(l, r),
+        h('span', { class: 'lead-meta', text: plural(r.feitos.length, 'interação', 'interações') + (r.dias !== null ? ' · ' + plural(r.dias, 'dia', 'dias') + ' até agendar' : '') }));
+      linhas.push(botao);
+    });
+    lista.replaceChildren.apply(lista, linhas.length ? linhas : [h('p', { class: 'vazio', text: 'Nenhuma lead com esse filtro.' })]);
+  }
+  preencher();
 
+  var basePequena = A.length < 10 || B.length < 10;
   return h('div', { class: 'pagina' },
-    cabecalho(c.nome, 'Jornada', 'do lead', 'O que cada pessoa fez e disse ter visto antes de fechar a agenda.', exemplo ? h('span', { class: 'pill aviso', text: 'Dados de exemplo' }) : null),
-    exemplo ? h('div', { class: 'faixa' }, h('b', { text: 'Ainda não há leads desta clínica.' }), 'As quatro fichas abaixo são um exemplo de como a jornada vai aparecer quando o WhatsApp e o Instagram forem conectados.') : null,
-    h('div', { class: 'resumo' },
-      numero('Toques até a agenda', comAgenda.length ? decimal(media(comAgenda, function (r) { return r.antes; })) : '—', 'em média, de quem agendou'),
-      numero('Dias até a agenda', comAgenda.length ? decimal(media(comAgenda, function (r) { return r.dias || 0; })) : '—', 'do primeiro toque ao agendamento'),
-      numero('Seguem o perfil', comAgenda.length ? seguem + ' de ' + comAgenda.length : '—', 'entre quem agendou'),
-      numero('Leads', String(leads.length), plural(comAgenda.length, 'agendou', 'agendaram') + ' · ' + plural(resumos.filter(function (r) { return r.fechou; }).length, 'fechou', 'fecharam'))),
-    h('div', { class: 'jornada' },
-      h('div', { class: 'painel leads' }, leads.map(function (l, i) {
-        var r = resumos[i];
-        return h('button', { class: 'lead', type: 'button', 'aria-current': l === aberto ? 'true' : null, onclick: function () { S.leadAberto = l.id; render(); } },
-          h('b', { text: l.nome || l.telefone || '@' + l.ig_username }),
-          h('span', { class: 'lead-meta' },
-            r.fechou ? h('span', { class: 'pill ok', text: 'Fechou' }) : r.agenda ? h('span', { class: 'pill ok', text: 'Agendou' }) : h('span', { class: 'pill', text: 'Em conversa' }),
-            plural(r.feitos.length, 'toque', 'toques')));
-      })),
-      h('div', { class: 'painel' }, fichaDoLead(aberto, resumoDoLead(aberto)))),
+    cabecalho(c.nome, 'Jornada', 'do lead', 'O que as leads fazem e dizem ter visto antes de fechar a agenda.', exemplo ? h('span', { class: 'pill aviso', text: 'Dados de exemplo' }) : null),
+    exemplo ? h('div', { class: 'faixa' }, h('b', { text: 'Ainda não há leads desta clínica.' }), 'As fichas abaixo são um exemplo de como a jornada vai aparecer quando o WhatsApp e o Instagram forem conectados.') : null,
+
     h('section', { class: 'secao' },
-      h('h2', { class: 'rot', text: 'O que aparece nas jornadas de quem agendou' }),
-      h('div', { class: 'resumo', style: 'grid-template-columns:repeat(auto-fit,minmax(280px,1fr))' },
-        h('div', { class: 'painel pad', style: 'display:grid;gap:12px' }, h('p', { class: 'nota', text: 'Tipo de conteúdo' }), freq(function (t) { return t.conteudo_tipo; }, function (k) { return TIPOS[k] || k; })),
-        h('div', { class: 'painel pad', style: 'display:grid;gap:12px' }, h('p', { class: 'nota', text: 'Tipo de toque' }), freq(function (t) { return t.tipo === 'declarado' || t.tipo === 'primeira_mensagem' ? null : t.tipo; }, function (k) { return (TOQUES[k] || [k])[0]; }))),
-      h('p', { class: 'nota', text: 'Isto mostra o que as jornadas têm em comum. Para saber se um conteúdo causa o fechamento, é preciso testar com e sem ele.' })));
+      h('div', { class: 'secao-topo' },
+        h('h2', { class: 'rot', text: 'O que diferencia quem agendou' }),
+        h('div', { class: 'legenda' }, h('span', {}, h('i', { class: 'a' }), 'Agendaram (' + A.length + ')'), h('span', {}, h('i', { class: 'b' }), 'Não agendaram (' + B.length + ')'))),
+      h('div', { class: 'resumo' },
+        numero('Interações até a agenda', A.length ? decimal(mediana(rA.map(function (r) { return r.antes; }))) : '—', 'mediana de ' + plural(A.length, 'lead que agendou', 'leads que agendaram')),
+        numero('Dias até a agenda', A.length ? decimal(mediana(rA.map(function (r) { return r.dias || 0; }))) : '—', 'da primeira interação ao agendamento'),
+        numero('Seguem o perfil', A.length ? seguem(A) + ' de ' + A.length : '—', 'de quem agendou · ' + seguem(B) + ' de ' + B.length + ' de quem não agendou'),
+        numero('Leads', String(leads.length), plural(A.length, 'agendou', 'agendaram') + ' · ' + plural(conta.fechou, 'fechou', 'fecharam'))),
+      h('div', { class: 'resumo', style: 'grid-template-columns:repeat(auto-fit,minmax(300px,1fr))' },
+        comparacao('Tipo de conteúdo na jornada', A, B, function (t) { return t.conteudo_tipo; }, function (k) { return TIPOS[k] || k; }),
+        comparacao('Tipo de interação na jornada', A, B, function (t) { return t.tipo === 'declarado' || t.tipo === 'primeira_mensagem' ? null : t.tipo; }, function (k) { return (TOQUES[k] || [k])[0]; })),
+      h('p', { class: 'nota', text: (basePequena ? 'Base pequena: leia como indício, não como regra. ' : '') + 'A comparação mostra o que aparece mais em quem agendou. Para saber se um conteúdo causa o agendamento, é preciso testar com e sem ele.' })),
+
+    h('section', { class: 'secao' },
+      h('div', { class: 'secao-topo' }, h('h2', { class: 'rot' }, 'Leads', h('span', { class: 'n', text: leads.length }))),
+      h('div', { class: 'ferr' },
+        h('input', { class: 'campo', type: 'search', placeholder: 'Buscar por nome, telefone ou @', 'aria-label': 'Buscar lead', value: S.busca, oninput: function (ev) { S.busca = ev.target.value; preencher(); } }),
+        chips),
+      h('div', { class: 'jornada' }, lista, ficha)));
 }
 function fichaDoLead(l, r) {
-  var itens = l.toques.map(function (t) { return { quando: t.quando, toque: t }; }).concat(l.etapas.map(function (e) { return { quando: e.quando, etapa: e }; }))
-    .sort(function (a, b) { return new Date(a.quando) - new Date(b.quando); });
+  var itens = eventosDoLead(l, r), anterior = null, linhas = [];
+  var meiaNoite = function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+  itens.forEach(function (it) {
+    var d = new Date(it.quando), dia = meiaNoite(d), novoDia = !anterior || dia.getTime() !== anterior.getTime();
+    if (anterior && novoDia) {
+      var n = Math.round((dia - anterior) / 864e5);
+      linhas.push(h('li', { class: 'toque pausa' }, h('div'), h('div', { class: 'toque-marca' }), h('div', { class: 'toque-corpo' }, h('span', { text: n === 1 ? 'No dia seguinte' : n + ' dias depois' }))));
+    }
+    anterior = dia;
+    var quando = h('div', { class: 'toque-quando' }, novoDia ? h('b', { text: diaMes(it.quando) }) : null, hora(it.quando));
+    if (it.etapa) {
+      linhas.push(h('li', { class: 'toque etapa' }, quando, h('div', { class: 'toque-marca', svg: icone('marco') }),
+        h('div', { class: 'toque-corpo' }, h('b', { text: ETAPAS[it.etapa.etapa] || it.etapa.etapa }), it.etapa.valor ? h('span', { text: reais(it.etapa.valor) }) : null)));
+      return;
+    }
+    var t = it.toque, dt = t.detalhes || {};
+    linhas.push(h('li', { class: 'toque' }, quando, h('div', { class: 'toque-marca', svg: icone((TOQUES[t.tipo] || [0, 'mensagem'])[1]) }),
+      h('div', { class: 'toque-corpo' },
+        h('b', { text: tituloDoToque(t) }),
+        t.titulo ? h('span', { text: t.titulo }) : null,
+        dt.texto ? h('span', { text: '"' + dt.texto + '"' }) : null,
+        t.conteudo_tipo ? h('div', { class: 'toque-tags' }, h('span', { class: 'pill', text: TIPOS[t.conteudo_tipo] || t.conteudo_tipo })) : null)));
+  });
   var frase = r.agenda
-    ? [h('b', { text: plural(r.antes, 'toque', 'toques') }), ' em ', h('b', { text: plural(r.dias, 'dia', 'dias') }), ' até agendar', r.fechou ? [' · fechou ', h('b', { text: r.fechou.valor ? reais(r.fechou.valor) : '' })] : null, '.']
-    : [h('b', { text: plural(r.feitos.length, 'toque', 'toques') }), ' até agora, ainda sem agenda.'];
+    ? [h('b', { text: plural(r.antes, 'interação', 'interações') }), ' em ', h('b', { text: plural(r.dias, 'dia', 'dias') }), ' até agendar', r.fechou ? [' · fechou', r.fechou.valor ? [' ', h('b', { text: reais(r.fechou.valor) })] : null] : null, '.']
+    : [h('b', { text: plural(r.feitos.length, 'interação', 'interações') }), ' até agora, ainda sem agenda.'];
   return h('div', { class: 'ficha' },
     h('div', { class: 'ficha-topo' },
       h('div', { style: 'display:grid;gap:4px' },
@@ -444,23 +542,15 @@ function fichaDoLead(l, r) {
           l.telefone ? h('span', { text: l.telefone }) : null,
           l.ig_username ? h('span', { text: '@' + l.ig_username }) : h('span', { text: 'Instagram não identificado' }),
           l.segue_perfil === null || l.segue_perfil === undefined ? null : h('span', { text: l.segue_perfil ? 'Segue o perfil' : 'Não segue o perfil' }))),
-      r.fechou ? h('span', { class: 'pill ok', text: 'Fechou' }) : r.agenda ? h('span', { class: 'pill ok', text: 'Agendou' }) : h('span', { class: 'pill', text: 'Em conversa' })),
+      pilula(r)),
     h('p', { class: 'frase' }, frase),
-    h('ol', { class: 'tempo' }, itens.map(function (it) {
-      var quando = h('div', { class: 'toque-quando' }, h('b', { text: diaMes(it.quando) }), hora(it.quando));
-      if (it.etapa) {
-        return h('li', { class: 'toque etapa' }, quando, h('div', { class: 'toque-marca', svg: icone('marco') }),
-          h('div', { class: 'toque-corpo' }, h('b', { text: ETAPAS[it.etapa.etapa] || it.etapa.etapa }), it.etapa.valor ? h('span', { text: reais(it.etapa.valor) }) : null));
-      }
-      var t = it.toque, def = TOQUES[t.tipo] || [t.tipo, 'mensagem'], d = t.detalhes || {};
-      var titulo = t.tipo === 'clique_link' && d.origem ? 'Clicou no link (' + d.origem + ')' : def[0];
-      return h('li', { class: 'toque' + (t.tipo === 'declarado' ? ' dito' : '') }, quando, h('div', { class: 'toque-marca', svg: icone(def[1]) }),
-        h('div', { class: 'toque-corpo' },
-          h('b', { text: titulo }),
-          t.titulo ? h('span', { text: t.titulo }) : null,
-          d.texto ? h('span', { text: '"' + d.texto + '"' }) : null,
-          t.conteudo_tipo ? h('div', { class: 'toque-tags' }, h('span', { class: 'pill', text: TIPOS[t.conteudo_tipo] || t.conteudo_tipo })) : null));
-    })));
+    r.ditos.length
+      ? h('div', { class: 'dito-caixa' },
+        h('p', { class: 'dito-tit' }, h('span', { svg: icone('fala'), style: 'display:contents' }), 'O que ela disse ter visto'),
+        r.ditos.map(function (t) { return h('blockquote', {}, '"' + t.detalhes.texto + '"', h('small', { text: 'Dito em ' + diaMes(t.quando) })); }))
+      : h('p', { class: 'nota', text: 'Ainda sem registro do que ela disse ter visto.' }),
+    h('ol', { class: 'tempo' }, linhas),
+    h('p', { class: 'nota', text: 'Agenda e fechamento serão marcados nesta ficha quando o WhatsApp for conectado.' }));
 }
 
 /* ---------- Links ---------- */
